@@ -5,7 +5,7 @@ metadata:
   annotations:
     ingress.kubernetes.io/proxy-body-size: 100M
     kubernetes.io/ingress.class: nginx
-    ingress.kubernetes.io/app-root: /
+    nginx.ingress.kubernetes.io/mirror-target: http://bluegreen-demo-preview.default.svc.cluster.local$request_uri
 spec:
   rules:
   - host: blue-green.dev.argoproj.io
