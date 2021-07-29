@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: bluegreen-demo
-        image: arthurma/demo:slow-1
+        image: arthurma/demo:blue
         imagePullPolicy: Always
         ports:
         - name: http
