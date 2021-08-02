@@ -23,7 +23,7 @@ const (
 	// (e.g. during a rolling update). This gives some time for ingress controllers to react to
 	// the Pod IP being removed from the Service's Endpoint list, which prevents traffic from being
 	// directed to terminated pods, which otherwise would cause timeout errors and/or request delays.
-	// See: See: https://github.com/kubernetes/ingress-nginx/issues/3335#issuecomment-434970950
+	// See: https://github.com/kubernetes/ingress-nginx/issues/3335#issuecomment-434970950
 	defaultTerminationDelay = 10
 )
 
@@ -37,19 +37,39 @@ var (
 		"blue",
 		"purple",
 	}
-	envErrorRate = os.Getenv("ERROR_RATE")
-	envLatency   = os.Getenv("LATENCY")
+	envLatency   float64
+	envErrorRate int
 )
+
+func init() {
+	var err error
+	envLatencyStr := os.Getenv("LATENCY")
+	if envLatencyStr != "" {
+		envLatency, err = strconv.ParseFloat(envLatencyStr, 64)
+		if err != nil {
+			panic(fmt.Sprintf("failed to parse LATENCY: %s", envLatencyStr))
+		}
+	}
+	envErrorRateStr := os.Getenv("ERROR_RATE")
+	if envErrorRateStr != "" {
+		envErrorRate, err = strconv.Atoi(envErrorRateStr)
+		if err != nil {
+			panic(fmt.Sprintf("failed to parse ERROR_RATE: %s", envErrorRateStr))
+		}
+	}
+}
 
 func main() {
 	var (
 		listenAddr       string
 		terminationDelay int
 		numCPUBurn       string
+		tls              bool
 	)
 	flag.StringVar(&listenAddr, "listen-addr", ":8080", "server listen address")
 	flag.IntVar(&terminationDelay, "termination-delay", defaultTerminationDelay, "termination delay in seconds")
 	flag.StringVar(&numCPUBurn, "cpu-burn", "", "burn specified number of cpus (number or 'all')")
+	flag.BoolVar(&tls, "tls", false, "Enable TLS (with self-signed certificate)")
 	flag.Parse()
 
 	rand.Seed(time.Now().UnixNano())
@@ -61,6 +81,13 @@ func main() {
 	server := &http.Server{
 		Addr:    listenAddr,
 		Handler: router,
+	}
+	if tls {
+		tlsConfig, err := CreateServerTLSConfig("", "", []string{"localhost", "rollouts-demo"})
+		if err != nil {
+			log.Fatalf("Could not generate TLS config: %v\n", err)
+		}
+		server.TLSConfig = tlsConfig
 	}
 
 	done := make(chan bool)
@@ -89,7 +116,13 @@ func main() {
 
 	cpuBurn(done, numCPUBurn)
 	log.Printf("Started server on %s", listenAddr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	var err error
+	if tls {
+		err = server.ListenAndServeTLS("", "")
+	} else {
+		err = server.ListenAndServe()
+	}
+	if err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Could not listen on %s: %v\n", listenAddr, err)
 	}
 
@@ -98,11 +131,9 @@ func main() {
 }
 
 type colorParameters struct {
-	Color            string `json:"color"`
-	DelayProbability *int   `json:"delayPercent,omitempty"`
-	DelayLength      int    `json:"delayLength,omitempty"`
-
-	Return500Probability *int `json:"return500,omitempty"`
+	Color                string  `json:"color"`
+	DelayLength          float64 `json:"delayLength,omitempty"`
+	Return500Probability *int    `json:"return500,omitempty"`
 }
 
 func getColor(w http.ResponseWriter, r *http.Request) {
@@ -138,63 +169,33 @@ func getColor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if envLatency != "" {
-		latency, err := strconv.Atoi(envLatency)
-		if err != nil {
-			w.WriteHeader(500)
-			log.Printf("%s: %v", string(requestBody), err.Error())
-			fmt.Fprintf(w, err.Error())
-			return
-		}
-		log.Printf("Delaying %s %ds", colorToReturn, latency)
-		time.Sleep(time.Duration(latency) * time.Second)
-	} else if colorParams.DelayProbability != nil && *colorParams.DelayProbability > 0 && *colorParams.DelayProbability >= rand.Intn(100) {
-		log.Printf("Delaying %s %ds", colorToReturn, colorParams.DelayLength)
-		time.Sleep(time.Duration(colorParams.DelayLength) * time.Second)
+	var delayLength float64
+	var delayLengthStr string
+	if colorParams.DelayLength > 0 {
+		delayLength = colorParams.DelayLength
+	} else if envLatency > 0 {
+		delayLength = envLatency
+	}
+	if delayLength > 0 {
+		delayLengthStr = fmt.Sprintf(" (%fs)", delayLength)
+		time.Sleep(time.Duration(delayLength) * time.Second)
 	}
 
-	returnSuccess := true
-	if envErrorRate != "" {
-		errorRate, err := strconv.Atoi(envErrorRate)
-		if err != nil {
-			w.WriteHeader(500)
-			log.Printf("%s: %v", string(requestBody), err.Error())
-			fmt.Fprintf(w, err.Error())
-			return
-		}
-		returnSuccess = rand.Intn(100) >= errorRate
-	} else if colorParams.Return500Probability != nil && *colorParams.Return500Probability > 0 && *colorParams.Return500Probability >= rand.Intn(100) {
-		returnSuccess = false
+	statusCode := http.StatusOK
+	if colorParams.Return500Probability != nil && *colorParams.Return500Probability > 0 && *colorParams.Return500Probability >= rand.Intn(100) {
+		statusCode = http.StatusInternalServerError
+	} else if envErrorRate > 0 && rand.Intn(100) >= envErrorRate {
+		statusCode = http.StatusInternalServerError
 	}
-	printColor(colorToReturn, w, returnSuccess)
+	printColor(colorToReturn, w, statusCode)
+	log.Printf("%d - %s%s\n", statusCode, colorToReturn, delayLengthStr)
 }
 
-func printColor(colorToPrint string, w http.ResponseWriter, healthy bool) {
+func printColor(colorToPrint string, w http.ResponseWriter, statusCode int) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if healthy {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		log.Println("Returning 500")
-		w.WriteHeader(500)
-	}
-	switch colorToPrint {
-	case "":
-		randomColor := randomColor()
-		if healthy {
-			log.Printf("Successful %s\n", randomColor)
-		} else {
-			log.Printf("500 - %s\n", randomColor)
-		}
-		fmt.Fprintf(w, "\"%s\"", randomColor)
-	default:
-		if healthy {
-			log.Printf("Successful %s\n", colorToPrint)
-		} else {
-			log.Printf("500 - %s\n", colorToPrint)
-		}
-		fmt.Fprintf(w, "\"%s\"", colorToPrint)
-	}
+	w.WriteHeader(statusCode)
+	fmt.Fprintf(w, "\"%s\"", colorToPrint)
 }
 
 func randomColor() string {
