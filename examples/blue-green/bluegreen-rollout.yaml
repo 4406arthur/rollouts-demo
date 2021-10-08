@@ -33,4 +33,4 @@ spec:
       activeService: bluegreen-demo
       previewService: bluegreen-demo-preview
       mirror: true
-      ingress: bluegreen-demo-preview
+      ingress: bluegreen-demo
