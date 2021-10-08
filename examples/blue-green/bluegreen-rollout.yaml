@@ -32,5 +32,5 @@ spec:
       autoPromotionEnabled: false
       activeService: bluegreen-demo
       previewService: bluegreen-demo-preview
-      #mirror: true
+      mirror: true
       ingress: bluegreen-demo
