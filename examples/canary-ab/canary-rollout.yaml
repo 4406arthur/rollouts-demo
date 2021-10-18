@@ -31,7 +31,7 @@ spec:
       stableService: canary-demo
       trafficRouting:
         nginx:
-          stableIngress: canary-ing  # required
+          #stableIngress: canary-ing  # required
           annotationPrefix: customingress.nginx.ingress.kubernetes.io # optional
           additionalIngressAnnotations:   # optional
             canary-by-header: X-Canary
