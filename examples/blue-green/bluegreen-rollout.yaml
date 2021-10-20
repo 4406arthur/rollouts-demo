@@ -5,7 +5,7 @@ metadata:
   labels:
     app: bluegreen-demo
 spec:
-  replicas: 2
+  replicas: 3
   revisionHistoryLimit: 1
   selector:
     matchLabels:
@@ -17,11 +17,11 @@ spec:
     spec:
       containers:
       - name: bluegreen-demo
-        image: arthurma/demo:green
+        image: arthurma/demo:v1.0.0
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 8080
+          containerPort: 8000
           protocol: TCP
         resources:
           requests:
@@ -32,5 +32,5 @@ spec:
       autoPromotionEnabled: false
       activeService: bluegreen-demo
       previewService: bluegreen-demo-preview
-      mirror: true
-      ingress: bluegreen-demo
+      #mirror: true
+      #ingress: bluegreen-demo

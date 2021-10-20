@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      containers:
+      - name: myapp
+        image: arthurma/demo:v1.0.0
+        resources:
+          requests:
+            memory: 32Mi
+            cpu: 32m
+          limits:
+            memory: 64Mi
+            cpu: 64m
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP

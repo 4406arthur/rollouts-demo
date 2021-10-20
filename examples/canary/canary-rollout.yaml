@@ -19,21 +19,31 @@ spec:
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 8080
+          containerPort: 8000
           protocol: TCP
         resources:
           requests:
-            memory: 32Mi
-            cpu: 5m
+            memory: 64Mi
+            cpu: 32m
   strategy:
     canary:
       canaryService: canary-demo-preview
+      stableService: canary-demo
+      trafficRouting:
+        nginx:
+          stableIngress: canary-demo  # required
+          additionalIngressAnnotations:   # optional
+            canary-by-header: X-Canary
+            canary-by-header-value: "2330"
       steps:
-      - setWeight: 20
+      - setCanaryScale:
+          weight: 20
       - pause: {}
-      - setWeight: 40
-      - pause: {duration: 10}
-      - setWeight: 60
-      - pause: {duration: 10}
-      - setWeight: 80
-      - pause: {duration: 10}
+      # - setWeight: 20
+      # - pause: {}
+      # - setWeight: 40
+      # - pause: {}
+      # - setWeight: 60
+      # - pause: {duration: 10}
+      # - setWeight: 80
+      # - pause: {duration: 10}
